@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Spice Store{% endblock %}
+{% block content %}
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+  const placeholderSrc = "{{ url_for('static', filename='product-placeholder.svg') }}";
+  const apiProductsUrl = "{{ url_for('main.api_products') }}";
+  const uploadUrl = "{{ url_for('main.upload') }}";
+
+  function getCartIds() {
+    try {
+      const raw = sessionStorage.getItem("spice_cart_v1");
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function setCartIds(ids) {
+    sessionStorage.setItem("spice_cart_v1", JSON.stringify(ids));
+  }
+
+  function App() {
+    const [route, setRoute] = React.useState(window.location.pathname);
+    const [products, setProducts] = React.useState([]);
+    const [cartIds, setCartIdsState] = React.useState(getCartIds());
+    const [paymentMethod, setPaymentMethod] = React.useState("ach");
+    const [receiptFile, setReceiptFile] = React.useState(null);
+    const [error, setError] = React.useState("");
+    const [saving, setSaving] = React.useState(false);
+
+    React.useEffect(() => {
+      // Refresca solo una vez al montar; los productos vienen de la DB.
+      fetch(apiProductsUrl)
+        .then((r) => r.json())
+        .then((data) => setProducts(data))
+        .catch(() => setError("No se pudieron cargar los productos."));
+    }, []);
+
+    React.useEffect(() => {
+      // Si el usuario cambia ruta sin recargar (menos común), actualizamos la vista.
+      const onPop = () => setRoute(window.location.pathname);
+      window.addEventListener("popstate", onPop);
+      return () => window.removeEventListener("popstate", onPop);
+    }, []);
+
+    const productsById = React.useMemo(() => {
+      const map = new Map();
+      for (const p of products) map.set(p.id, p);
+      return map;
+    }, [products]);
+
+    const addToCart = (id) => {
+      const ids = getCartIds();
+      ids.push(id);
+      setCartIds(ids);
+      setCartIdsState(ids);
+    };
+
+    const removeOneFromCart = (id) => {
+      const ids = getCartIds();
+      const idx = ids.indexOf(id);
+      if (idx !== -1) ids.splice(idx, 1);
+      setCartIds(ids);
+      setCartIdsState(ids);
+    };
+
+    const cartCounts = React.useMemo(() => {
+      const counts = {};
+      for (const id of cartIds) {
+        counts[id] = (counts[id] || 0) + 1;
+      }
+      return counts;
+    }, [cartIds]);
+
+    const cartLines = React.useMemo(() => {
+      const ids = Object.keys(cartCounts).map((x) => Number(x)).sort((a, b) => a - b);
+      return ids
+        .map((id) => {
+          const product = productsById.get(id);
+          if (!product) return null;
+          const quantity = cartCounts[id];
+          const lineTotal = product.price * quantity;
+          return { product, quantity, lineTotal };
+        })
+        .filter(Boolean);
+    }, [cartCounts, productsById]);
+
+    const cartTotal = React.useMemo(() => {
+      return cartLines.reduce((sum, l) => sum + l.lineTotal, 0);
+    }, [cartLines]);
+
+    const goHome = () => {
+      window.location.href = "{{ url_for('main.home') }}";
+    };
+
+    const onSubmitCheckout = async (e) => {
+      e.preventDefault();
+      setError("");
+
+      if (!receiptFile) {
+        setError("Selecciona un comprobante para continuar.");
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const formData = new FormData();
+        formData.append("payment_method", paymentMethod);
+        formData.append("receipt", receiptFile);
+
+        const resp = await fetch(uploadUrl, { method: "POST", body: formData });
+        if (!resp.ok) throw new Error("upload failed");
+
+        // Limpia carrito del lado cliente: queremos que se vacíe al finalizar.
+        sessionStorage.removeItem("spice_cart_v1");
+        setCartIdsState([]);
+
+        goHome();
+      } catch (err) {
+        setError("No se pudo completar el checkout. Intenta de nuevo.");
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const isCheckout = route === "/checkout";
+
+    if (isCheckout) {
+      return (
+        <div>
+          <h2>Checkout</h2>
+
+          {cartLines.length > 0 ? (
+            <section className="cart-summary" aria-labelledby="cart-heading">
+              <h3 id="cart-heading">Tu pedido</h3>
+
+              <table className="cart-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Producto</th>
+                    <th scope="col">Cantidad</th>
+                    <th scope="col">Subtotal</th>
+                    <th scope="col" className="cart-action-col">Acción</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {cartLines.map((line) => (
+                    <tr key={line.product.id}>
+                      <td className="cart-product">
+                        <div className="cart-media" aria-hidden="true">
+                          <img
+                            className="product-image product-image--sm"
+                            src={placeholderSrc}
+                            alt=""
+                          />
+                        </div>
+                        <div className="cart-product-name">{line.product.name}</div>
+                      </td>
+                      <td>{line.quantity}</td>
+                      <td>${line.lineTotal.toFixed(2)}</td>
+                      <td className="cart-action">
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          onClick={() => removeOneFromCart(line.product.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+
+                <tfoot>
+                  <tr>
+                    <th colSpan="2" scope="row">Total</th>
+                    <td><strong>${cartTotal.toFixed(2)}</strong></td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </section>
+          ) : (
+            <p className="empty">
+              Tu carrito está vacío.{" "}
+              <a href={window.location.origin + "{{ url_for('main.home') }}"}>Ver productos</a>
+            </p>
+          )}
+
+          <form className="checkout-form" onSubmit={onSubmitCheckout} method="POST" encType="multipart/form-data">
+            <fieldset className="payment-methods" disabled={saving || cartLines.length === 0}>
+              <legend>Método de pago</legend>
+              <p className="payment-hint">Elige cómo vas a pagar (podrás subir el comprobante abajo).</p>
+
+              <div className="payment-options">
+                <label className="payment-option">
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value="ach"
+                    checked={paymentMethod === "ach"}
+                    onChange={() => setPaymentMethod("ach")}
+                    required
+                  />
+                  <span className="payment-label">
+                    <span className="payment-title">ACH</span>
+                    <span className="payment-desc">Transferencia bancaria</span>
+                  </span>
+                  <span className="payment-logo payment-logo--placeholder" aria-hidden="true">Logo ACH</span>
+                </label>
+
+                <label className="payment-option">
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value="yappy"
+                    checked={paymentMethod === "yappy"}
+                    onChange={() => setPaymentMethod("yappy")}
+                    required
+                  />
+                  <span className="payment-label">
+                    <span className="payment-title">Yappy</span>
+                    <span className="payment-desc">Pago móvil</span>
+                  </span>
+                  <span className="payment-logo payment-logo--placeholder" aria-hidden="true">Logo Yappy</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label className="receipt-field">
+              Comprobante
+              <input
+                type="file"
+                name="receipt"
+                required
+                accept="image/*,.pdf"
+                disabled={saving || cartLines.length === 0}
+                onChange={(e) => setReceiptFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+              />
+            </label>
+
+            <button type="submit" disabled={saving || cartLines.length === 0}>
+              {saving ? "Procesando..." : "Subir comprobante"}
+            </button>
+          </form>
+
+          {error ? <p className="empty error-msg">{error}</p> : null}
+        </div>
+      );
+    }
+
+    // Products (home)
+    return (
+      <div>
+        <h1>Productos</h1>
+
+        {products.length === 0 ? (
+          <p className="empty">Cargando productos...</p>
+        ) : (
+          <ul className="product-list">
+            {products.map((product) => (
+              <li className="product-card" key={product.id}>
+                <div className="product-media" aria-hidden="true">
+                  <img className="product-image" src={placeholderSrc} alt="" />
+                </div>
+                <div className="product-body">
+                  <h3 className="product-name">{product.name}</h3>
+                  <p className="price">${product.price.toFixed(2)}</p>
+                  <button type="button" className="btn btn-primary" onClick={() => addToCart(product.id)}>
+                    Agregar al carrito
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-5">
+          <a className="btn btn-primary" href={window.location.origin + "{{ url_for('main.checkout') }}"}>
+            Ir al checkout
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+{% endblock %}
+

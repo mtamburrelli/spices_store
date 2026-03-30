@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Checkout — Spice Store{% endblock %}
+{% block content %}
+<h2>Checkout</h2>
+
+{% if cart_lines %}
+<section class="cart-summary" aria-labelledby="cart-heading">
+  <h3 id="cart-heading">Tu pedido</h3>
+  <table class="cart-table">
+    <thead>
+      <tr>
+        <th scope="col">Producto</th>
+        <th scope="col">Cantidad</th>
+        <th scope="col">Subtotal</th>
+        <th scope="col" class="cart-action-col">Acción</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in cart_lines %}
+      <tr>
+        <td class="cart-product">
+          <div class="cart-media" aria-hidden="true">
+            <img
+              class="product-image product-image--sm"
+              src="{{ url_for('static', filename='product-placeholder.svg') }}"
+              alt=""
+            />
+          </div>
+          <div class="cart-product-name">{{ line.product.name }}</div>
+        </td>
+        <td>{{ line.quantity }}</td>
+        <td>${{ "%.2f"|format(line.line_total|float) }}</td>
+        <td class="cart-action">
+          <form method="POST" action="{{ url_for('main.remove_from_cart', id=line.product.id) }}">
+            <button type="submit" class="btn btn-danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2" scope="row">Total</th>
+        <td><strong>${{ "%.2f"|format(cart_total|float) }}</strong></td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</section>
+
+<form class="checkout-form" action="{{ url_for('main.upload') }}" method="POST" enctype="multipart/form-data">
+  <fieldset class="payment-methods">
+    <legend>Método de pago</legend>
+    <p class="payment-hint">Elige cómo vas a pagar (podrás subir el comprobante abajo).</p>
+    <div class="payment-options">
+      <label class="payment-option">
+        <input type="radio" name="payment_method" value="ach" required>
+        <span class="payment-label">
+          <span class="payment-title">ACH</span>
+          <span class="payment-desc">Transferencia bancaria</span>
+        </span>
+        <span class="payment-logo payment-logo--placeholder" aria-hidden="true">Logo ACH</span>
+      </label>
+      <label class="payment-option">
+        <input type="radio" name="payment_method" value="yappy">
+        <span class="payment-label">
+          <span class="payment-title">Yappy</span>
+          <span class="payment-desc">Pago móvil</span>
+        </span>
+        <span class="payment-logo payment-logo--placeholder" aria-hidden="true">Logo Yappy</span>
+      </label>
+    </div>
+  </fieldset>
+
+  <label class="receipt-field">
+    Comprobante
+    <input type="file" name="receipt" required accept="image/*,.pdf">
+  </label>
+  <button type="submit">Subir comprobante</button>
+</form>
+{% else %}
+<p class="empty">Tu carrito está vacío. <a href="{{ url_for('main.home') }}">Ver productos</a></p>
+{% endif %}
+{% endblock %}

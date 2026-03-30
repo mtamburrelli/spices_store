@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Spice Store{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a href="{{ url_for('main.home') }}" class="logo">Spice Store</a>
+    <nav>
+      <a href="{{ url_for('main.home') }}">Productos</a>
+      <a href="{{ url_for('main.checkout') }}">Checkout</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    // Evita que el carrito se limpie cuando navegamos dentro del sitio (links/submit),
+    // pero sí lo limpia cuando el usuario cierra la pestaña o abandona la navegación actual.
+    window.__spice_navigating = false;
+
+    document.addEventListener('click', (e) => {
+      const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.startsWith('/')) window.__spice_navigating = true;
+    });
+
+    document.addEventListener('submit', () => {
+      window.__spice_navigating = true;
+    });
+
+    window.addEventListener('pagehide', (e) => {
+      if (e.persisted) return;
+      if (window.__spice_navigating) return;
+
+      const url = '{{ url_for("main.clear_cart") }}';
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url);
+        return;
+      }
+
+      // fallback
+      fetch(url, { method: 'POST', keepalive: true });
+    });
+  </script>
+</body>
+</html>

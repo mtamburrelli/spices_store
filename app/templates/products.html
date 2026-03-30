@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Productos — Spice Store{% endblock %}
+{% block content %}
+<h1>Productos</h1>
+
+{% if products %}
+  <ul class="product-list">
+  {% for product in products %}
+    <li class="product-card">
+      <div class="product-media" aria-hidden="true">
+        <img
+          class="product-image"
+          src="{{ url_for('static', filename='product-placeholder.svg') }}"
+          alt=""
+        />
+      </div>
+
+      <div class="product-body">
+        <h3 class="product-name">{{ product.name }}</h3>
+        <p class="price">${{ "%.2f"|format(product.price|float) }}</p>
+        <a class="btn btn-primary" href="{{ url_for('main.add_to_cart', id=product.id) }}">Agregar al carrito</a>
+      </div>
+    </li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <p class="empty">No hay productos en el catálogo todavía.</p>
+{% endif %}
+{% endblock %}
